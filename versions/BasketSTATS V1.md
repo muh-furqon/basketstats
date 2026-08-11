@@ -46,11 +46,15 @@
 ### 5. Aturan Waktu Bermain Turnamen (Tournament 6-Minute Rule)
 - **Ketentuan Turnamen:** Membantu pelatih/pengawas mematuhi aturan turnamen di mana setiap pemain wajib bermain minimal **6 menit akumulatif** (360 detik) dari Kuarter 1 hingga Kuarter 3.
 - **Timer Pertandingan Otomatis (Live Match Clock):** Menghitung waktu bermain secara *real-time* hanya untuk pemain yang sedang berstatus **On Court**.
-- **Fitur Substitusi Cepat:** Tombol `On Court` / `Bench` pada kartu pemain untuk mengganti pemain di lapangan secara langsung.
+- **Sistem Substitusi Drag & Drop Pemain:**
+  - Panel roster terbagi menjadi dua zona drop visual: **🏀 On Court Lineup (Maks 5)** dan **🪑 Bench Roster (Cadangan)**.
+  - Cukup **drag (tarik)** kartu pemain dari Bench dan **drop (lepas)** ke pemain On Court untuk melakukan substitusi pemain secara langsung.
+  - Efek visual animasi saat melakukan drag & drop (`border emas putus-putus bersinar`).
+  - Mendukung ketukan 1-tap (*touch fallback*) untuk kenyamanan pengguna layar HP/tablet.
 - **Indikator Visual Sangat Jelas:**
-  - 🟢 **Terpenuhi (>= 6 Min):** Lencana hijau dengan tanda centang `✓ 6m Rule Met (Compliant)` dan border hijau bersinar.
-  - 🟡 **Dalam Proses (< 6 Min, Q1-Q3):** Progress bar animasi yang terisi secara *real-time* dengan indikator `4m 15s / 6m`.
-  - 🔴 **Peringatan Penalti Kuarter 4 (Q4 Risk):** Lencana peringatan merah berkedip `⚠️ Q4 Penalty Risk! Under 6m` jika pemain memasuki Kuarter 4 namun belum mencapai batas minimal 6 menit.
+  - 🟢 **Terpenuhi (>= 6 Min):** Lencana hijau dengan tanda centang `✓ 6m Met` dan border hijau bersinar.
+  - 🟡 **Dalam Proses (< 6 Min, Q1-Q3):** Progress bar animasi yang terisi secara *real-time* dengan penunjuk waktu.
+  - 🔴 **Peringatan Penalti Kuarter 4 (Q4 Risk):** Lencana peringatan merah berkedip `⚠️ Q4 Penalty Risk` jika pemain memasuki Kuarter 4 namun belum mencapai batas minimal 6 menit.
 
 ### 6. Laporan Lanjutan Match & Rapport Tim (Post-Match Rapport & Analytics)
 Tampilan Box Score ditingkatkan menjadi dokumen **Laporan Pertandingan (Team Rapport)** dengan 3 tab utama:

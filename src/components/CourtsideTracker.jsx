@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { RotateCcw, ArrowLeft, Play, Pause, Zap, CheckCircle2, AlertTriangle, ShieldCheck, Clock, Sparkles, Flag, Lock, TrendingUp } from 'lucide-react';
+import { RotateCcw, ArrowLeft, Play, Pause, Zap, CheckCircle2, AlertTriangle, ShieldCheck, Clock, Flag, Lock, TrendingUp, Move, Users } from 'lucide-react';
 import { addPlayByPlayEvent, undoLastEvent, updateGameQuarter, updateGameStatus, calculateBoxScore } from '../db/services';
 import { useMatchClock } from '../hooks/useMatchClock';
 import AssistModal from './AssistModal';
@@ -10,6 +10,10 @@ export default function CourtsideTracker({ game, players, events, onEventsUpdate
   const [assistModalOpen, setAssistModalOpen] = useState(false);
   const [pendingScorer, setPendingScorer] = useState(null);
   const [pendingShotType, setPendingShotType] = useState(null);
+
+  // Drag & Drop Substitution State
+  const [draggedPlayerId, setDraggedPlayerId] = useState(null);
+  const [dragOverPlayerId, setDragOverPlayerId] = useState(null);
 
   // Match clock hook
   const {
@@ -27,6 +31,14 @@ export default function CourtsideTracker({ game, players, events, onEventsUpdate
   const teamBPlayers = useMemo(() => players.filter((p) => p.teamId === 'teamB'), [players]);
 
   const activeTeamPlayers = selectedTeam === 'teamA' ? teamAPlayers : teamBPlayers;
+
+  const onCourtPlayers = useMemo(() => {
+    return activeTeamPlayers.filter((p) => onCourtPlayerIds.includes(p.id));
+  }, [activeTeamPlayers, onCourtPlayerIds]);
+
+  const benchPlayers = useMemo(() => {
+    return activeTeamPlayers.filter((p) => !onCourtPlayerIds.includes(p.id));
+  }, [activeTeamPlayers, onCourtPlayerIds]);
 
   // Total scores per team
   const teamAScore = useMemo(() => {
@@ -68,6 +80,41 @@ export default function CourtsideTracker({ game, players, events, onEventsUpdate
         onOpenRapport(game.id);
       }
     }
+  };
+
+  // Drag & Drop Substitution Handlers
+  const handleDragStart = (e, playerId) => {
+    e.dataTransfer.setData('text/plain', playerId);
+    setDraggedPlayerId(playerId);
+  };
+
+  const handleDragOver = (e, playerId) => {
+    e.preventDefault();
+    setDragOverPlayerId(playerId);
+  };
+
+  const handleDropSub = (targetPlayerId) => {
+    if (!draggedPlayerId || draggedPlayerId === targetPlayerId) {
+      setDraggedPlayerId(null);
+      setDragOverPlayerId(null);
+      return;
+    }
+
+    const isDraggedOnCourt = onCourtPlayerIds.includes(draggedPlayerId);
+    const isTargetOnCourt = onCourtPlayerIds.includes(targetPlayerId);
+
+    if (!isDraggedOnCourt && isTargetOnCourt) {
+      // Bench player dragged onto Court player -> Swap them!
+      toggleOnCourt(draggedPlayerId); // Sub in
+      toggleOnCourt(targetPlayerId);  // Sub out
+    } else if (isDraggedOnCourt && !isTargetOnCourt) {
+      // Court player dragged onto Bench -> Swap them!
+      toggleOnCourt(draggedPlayerId); // Sub out
+      toggleOnCourt(targetPlayerId);  // Sub in
+    }
+
+    setDraggedPlayerId(null);
+    setDragOverPlayerId(null);
   };
 
   const handleAction = async (eventType) => {
@@ -158,6 +205,125 @@ export default function CourtsideTracker({ game, players, events, onEventsUpdate
       });
   }, [events, players]);
 
+  // Helper renderer for player card in Drag & Drop zones
+  const renderPlayerCard = (player, isOnCourt) => {
+    const isSelected = selectedPlayerId === player.id;
+    const isBeingDragged = draggedPlayerId === player.id;
+    const isDragOver = dragOverPlayerId === player.id;
+    const playedSec = playedSecondsMap[player.id] || 0;
+    const isFulfilled = playedSec >= 360;
+    const isQuarter4 = (game.currentQuarter || 1) >= 4;
+    const isPenaltyRisk = isQuarter4 && !isFulfilled;
+    const progressPct = Math.min(100, Math.round((playedSec / 360) * 100));
+
+    return (
+      <div
+        key={player.id}
+        draggable={!isMatchFinished}
+        onDragStart={(e) => handleDragStart(e, player.id)}
+        onDragOver={(e) => handleDragOver(e, player.id)}
+        onDragLeave={() => setDragOverPlayerId(null)}
+        onDrop={(e) => {
+          e.preventDefault();
+          handleDropSub(player.id);
+        }}
+        className={`p-3 rounded-2xl border transition-all space-y-2 cursor-grab active:cursor-grabbing ${
+          isBeingDragged
+            ? 'opacity-40 scale-95 border-amber-400 border-dashed'
+            : isDragOver
+            ? 'border-amber-400 border-2 ring-4 ring-amber-400/30 scale-102 bg-amber-500/10'
+            : isSelected
+            ? 'bg-slate-800 border-amber-500 ring-2 ring-amber-500/30 shadow-lg'
+            : isPenaltyRisk
+            ? 'bg-red-950/20 border-red-500/60'
+            : isFulfilled
+            ? 'bg-emerald-950/20 border-emerald-500/40'
+            : 'bg-slate-950/80 border-slate-800/90'
+        }`}
+      >
+        {/* Top row */}
+        <div className="flex items-center justify-between gap-2">
+          <div
+            onClick={() => setSelectedPlayerId(player.id)}
+            className="flex items-center gap-2.5 cursor-pointer flex-1"
+          >
+            <div
+              className={`w-8 h-8 rounded-xl font-black text-xs flex items-center justify-center shrink-0 ${
+                isSelected ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300'
+              }`}
+            >
+              #{player.jerseyNumber}
+            </div>
+
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-white text-sm leading-tight">{player.name}</span>
+                <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-slate-800 text-amber-400 border border-slate-700">
+                  {player.position || 'G'}
+                </span>
+              </div>
+
+              <div className="text-[11px] font-semibold text-slate-400 mt-0.5 flex items-center gap-1">
+                <Clock className="w-3 h-3 text-slate-500" />
+                <span>{formatTime(playedSec)} / 6m</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              disabled={isMatchFinished}
+              onClick={() => toggleOnCourt(player.id)}
+              className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
+                isOnCourt
+                  ? 'bg-emerald-500 text-slate-950 shadow-sm'
+                  : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+              title="Click to swap or drag to drop zone"
+            >
+              {isOnCourt ? 'On Court' : 'Bench'}
+            </button>
+            <Move className="w-3.5 h-3.5 text-slate-600 cursor-grab" />
+          </div>
+        </div>
+
+        {/* Progress Bar & Rule Compliance Indicators */}
+        <div className="space-y-1 pt-1 border-t border-slate-800/80">
+          <div className="flex items-center justify-between text-[10px] font-bold">
+            {isFulfilled ? (
+              <span className="text-emerald-400 flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                <span>6m Met</span>
+              </span>
+            ) : isPenaltyRisk ? (
+              <span className="text-red-400 flex items-center gap-1 font-black animate-pulse">
+                <AlertTriangle className="w-3 h-3 text-red-400" />
+                <span>Q4 Penalty Risk</span>
+              </span>
+            ) : (
+              <span className="text-slate-400">{progressPct}%</span>
+            )}
+
+            <span className="text-slate-400 font-mono text-[10px]">{formatTime(playedSec)}</span>
+          </div>
+
+          <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+            <div
+              className={`h-full transition-all duration-300 ${
+                isFulfilled
+                  ? 'bg-emerald-400 shadow-sm shadow-emerald-400/50'
+                  : isPenaltyRisk
+                  ? 'bg-red-500 shadow-sm shadow-red-500/50 animate-pulse'
+                  : 'bg-gradient-to-r from-amber-500 to-orange-500'
+              }`}
+              style={{ width: `${progressPct}%` }}
+            ></div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="max-w-7xl mx-auto p-3 sm:p-5 space-y-4">
       {/* 1. Header Bar & Match Lifecycle Controls */}
@@ -172,7 +338,7 @@ export default function CourtsideTracker({ game, players, events, onEventsUpdate
             <span>Dashboard</span>
           </button>
 
-          {/* Lifecycle Action Buttons: Start Match vs Finish Match vs Finished Badge */}
+          {/* Lifecycle Action Buttons */}
           <div className="flex items-center gap-2">
             {isNotStarted ? (
               <button
@@ -186,7 +352,7 @@ export default function CourtsideTracker({ game, players, events, onEventsUpdate
               <div className="flex items-center gap-2">
                 <span className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-950 border border-slate-800 text-slate-400 rounded-xl text-xs font-bold">
                   <Lock className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Match Finished & Locked</span>
+                  <span>Match Finished</span>
                 </span>
                 <button
                   onClick={() => onOpenRapport && onOpenRapport(game.id)}
@@ -280,7 +446,7 @@ export default function CourtsideTracker({ game, players, events, onEventsUpdate
 
       {/* Main Interactive Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Left Column: Roster Select & 6-Min Rule Indicators (5 cols) */}
+        {/* Left Column: Drag & Drop Roster Zones (5 cols) */}
         <div className="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-4 shadow-xl">
           {/* Team Tabs */}
           <div className="grid grid-cols-2 gap-2 p-1 bg-slate-950 rounded-2xl border border-slate-800">
@@ -313,120 +479,49 @@ export default function CourtsideTracker({ game, players, events, onEventsUpdate
             </button>
           </div>
 
-          {/* Roster Cards with 6-Min Indicators */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider px-1">
-              <span>Roster & Tournament Minutes</span>
-              <span className="text-[10px] text-amber-400">Min 6m in Q1-Q3</span>
+          <div className="text-[11px] font-semibold text-slate-400 bg-slate-950/80 p-2 rounded-xl border border-slate-800 flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-amber-400">
+              <Move className="w-3.5 h-3.5" /> Drag bench player onto court player to swap!
+            </span>
+          </div>
+
+          {/* DRAG & DROP ZONE 1: ON COURT PLAYERS (5 SLOTS) */}
+          <div className="space-y-2 bg-emerald-950/20 border border-emerald-500/30 p-3 rounded-2xl">
+            <div className="flex items-center justify-between text-xs font-black text-emerald-400 uppercase tracking-wider">
+              <span>🏀 On Court Lineup ({onCourtPlayers.length})</span>
+              <span className="text-[10px] text-slate-400">Active</span>
             </div>
 
-            <div className="space-y-2.5 max-h-[420px] overflow-y-auto pr-1">
-              {activeTeamPlayers.map((player) => {
-                const isSelected = selectedPlayerId === player.id;
-                const isOnCourt = onCourtPlayerIds.includes(player.id);
-                const playedSec = playedSecondsMap[player.id] || 0;
-                const isFulfilled = playedSec >= 360;
-                const isQuarter4 = (game.currentQuarter || 1) >= 4;
-                const isPenaltyRisk = isQuarter4 && !isFulfilled;
-                const progressPct = Math.min(100, Math.round((playedSec / 360) * 100));
-
-                return (
-                  <div
-                    key={player.id}
-                    className={`p-3 rounded-2xl border transition-all space-y-2.5 ${
-                      isSelected
-                        ? 'bg-slate-800 border-amber-500 ring-2 ring-amber-500/30 shadow-lg'
-                        : isPenaltyRisk
-                        ? 'bg-red-950/20 border-red-500/60'
-                        : isFulfilled
-                        ? 'bg-emerald-950/20 border-emerald-500/40'
-                        : 'bg-slate-950/80 border-slate-800/90'
-                    }`}
-                  >
-                    {/* Top row */}
-                    <div className="flex items-center justify-between gap-2">
-                      <div
-                        onClick={() => setSelectedPlayerId(player.id)}
-                        className="flex items-center gap-2.5 cursor-pointer flex-1"
-                      >
-                        <div
-                          className={`w-9 h-9 rounded-xl font-black text-xs flex items-center justify-center shrink-0 ${
-                            isSelected ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300'
-                          }`}
-                        >
-                          #{player.jerseyNumber}
-                        </div>
-
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-white text-sm leading-tight">{player.name}</span>
-                            <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-slate-800 text-amber-400 border border-slate-700">
-                              {player.position || 'G'}
-                            </span>
-                          </div>
-
-                          <div className="text-[11px] font-semibold text-slate-400 mt-0.5 flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-slate-500" />
-                            <span>{formatTime(playedSec)} / 6m</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Right actions: Sub In/Out */}
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          disabled={isMatchFinished}
-                          onClick={() => toggleOnCourt(player.id)}
-                          className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
-                            isOnCourt
-                              ? 'bg-emerald-500 text-slate-950 shadow-sm'
-                              : 'bg-slate-800 text-slate-400 hover:text-slate-200'
-                          }`}
-                        >
-                          {isOnCourt ? 'On Court' : 'Bench'}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Progress Bar & Rule Compliance Indicators */}
-                    <div className="space-y-1 pt-1 border-t border-slate-800/80">
-                      <div className="flex items-center justify-between text-[10px] font-bold">
-                        {isFulfilled ? (
-                          <span className="text-emerald-400 flex items-center gap-1">
-                            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                            <span>6m Rule Met (Compliant)</span>
-                          </span>
-                        ) : isPenaltyRisk ? (
-                          <span className="text-red-400 flex items-center gap-1 font-black animate-pulse">
-                            <AlertTriangle className="w-3 h-3 text-red-400" />
-                            <span>Q4 Penalty Risk! Under 6m</span>
-                          </span>
-                        ) : (
-                          <span className="text-slate-400">
-                            Tournament Min: {progressPct}%
-                          </span>
-                        )}
-
-                        <span className="text-slate-400 font-mono">{formatTime(playedSec)}</span>
-                      </div>
-
-                      <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
-                        <div
-                          className={`h-full transition-all duration-300 ${
-                            isFulfilled
-                              ? 'bg-emerald-400 shadow-sm shadow-emerald-400/50'
-                              : isPenaltyRisk
-                              ? 'bg-red-500 shadow-sm shadow-red-500/50 animate-pulse'
-                              : 'bg-gradient-to-r from-amber-500 to-orange-500'
-                          }`}
-                          style={{ width: `${progressPct}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="space-y-2">
+              {onCourtPlayers.map((player) => renderPlayerCard(player, true))}
             </div>
+          </div>
+
+          {/* DRAG & DROP ZONE 2: BENCH PLAYERS */}
+          <div
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (draggedPlayerId && onCourtPlayerIds.includes(draggedPlayerId)) {
+                toggleOnCourt(draggedPlayerId);
+                setDraggedPlayerId(null);
+                setDragOverPlayerId(null);
+              }
+            }}
+            className="space-y-2 bg-slate-950 p-3 rounded-2xl border border-slate-800"
+          >
+            <div className="flex items-center justify-between text-xs font-black text-slate-400 uppercase tracking-wider">
+              <span>🪑 Bench Roster ({benchPlayers.length})</span>
+              <span className="text-[10px] text-slate-500">Substitutes</span>
+            </div>
+
+            {benchPlayers.length === 0 ? (
+              <div className="text-center py-3 text-slate-600 text-xs italic">All players are on court</div>
+            ) : (
+              <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                {benchPlayers.map((player) => renderPlayerCard(player, false))}
+              </div>
+            )}
           </div>
         </div>
 
